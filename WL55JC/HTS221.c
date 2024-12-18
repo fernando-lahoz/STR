@@ -102,29 +102,29 @@ void HTS221_configure(enum HTS221_Temp_Avg avg_samples_temp,
     ctrl_reg.reg3.drdy_en = 1;
     ctrl_reg.reg3.pp_op = 0; // Push-Pull
     ctrl_reg.reg3.drdy_polarity = 0; // Active high
-    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_WRITE, sizeof(ctrl_reg),
+    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_CTRL1 | DEV_WRITE, sizeof(ctrl_reg),
             &ctrl_reg, osWaitForever);
 
 	avg_conf.avg_hum = avg_samples_hum;
     avg_con.avg_temp = avg_samples_temp;
-    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_WRITE, sizeof(avg_conf),
+    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_AVG_CON | DEV_WRITE, sizeof(avg_conf),
             &avg_conf, osWaitForever);
 }
 
 void HTS221_start()
 {
     ctrl_reg.reg1.powerdown = 1;
-    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_WRITE, sizeof(ctrl_reg.reg1),
+    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_CTRL1 | DEV_WRITE, sizeof(ctrl_reg.reg1),
             &ctrl_reg.reg1, osWaitForever);
 
-    HAL_I2C_Mem_Read(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_READ, sizeof(calibration),
+    HAL_I2C_Mem_Read(hi2c1, DEV_ADDR, ADDR_CALIBRATION | DEV_READ, sizeof(calibration),
             &calibration, osWaitForever);
 }
 
 void HTS221_sample()
 {
     ctrl_reg.reg2.one_shot_en = 1;
-    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_WRITE, sizeof(ctrl_reg.reg2),
+    HAL_I2C_Mem_Write(hi2c1, DEV_ADDR, ADDR_CTRL2 | DEV_WRITE, sizeof(ctrl_reg.reg2),
             &ctrl_reg.reg2, osWaitForever);
 }
 
@@ -134,7 +134,7 @@ void HTS221_get_data(uint16_t *temperature_x8, uint16_t *humidity_x2)
     int16_t t0_degC_x8, t1_degC_x8;
     struct output output;
 
-    HAL_I2C_Mem_Read(hi2c1, DEV_ADDR, ADDR_WHO_AM_I | DEV_READ, sizeof(output),
+    HAL_I2C_Mem_Read(hi2c1, DEV_ADDR, ADDR_OUTPUT | DEV_READ, sizeof(output),
             &output, osWaitForever);
 
     // Linear Interpolation
