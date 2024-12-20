@@ -5,8 +5,13 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <errno.h>
+#include <sys/poll.h>
+#include <sys/time.h>
 
 static int serial_port = -1;
+static int freedom_pipe[2]; // I am a clansman!
+static int hate_pipe[2];
+static struct pollfd fds[2];
 
 int SERIAL_open(const char *dev_name)
 {
@@ -43,6 +48,25 @@ int SERIAL_open(const char *dev_name)
         return -1;
     }
 
+    if (pipe(freedom_pipe) == -1) {
+        fprintf(stderr, "Failed to create freedom pipe: %s\n", strerror(errno));
+        close(serial_port);
+        return -1;
+    }
+
+    if (pipe(hate_pipe) == -1) {
+        fprintf(stderr, "Failed to create freedom pipe: %s\n", strerror(errno));
+        close(freedom_pipe[0]);
+        close(freedom_pipe[1]);
+        close(serial_port);
+        return -1;
+    }
+    
+    fds[0].fd = freedom_pipe[0];
+    fds[0].events = POLLIN;
+    fds[1].fd = serial_port;
+    fds[1].events = POLLIN;
+
     return 0;
 }
 
@@ -59,6 +83,21 @@ ssize_t SERIAL_write(const void* msg, size_t length)
 ssize_t SERIAL_read(void *msg, size_t length)
 {
     ssize_t ret;
+    ret = poll(fds, 2, -1);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to read (poll): %s\n", strerror(errno));
+        return ret;
+    }
+
+    // Awaken from read
+    if (fds[0].revents & POLLIN) {
+        // Notify i'm ready
+        if (write(hate_pipe[1], "I HATE U", 8) < 0) {
+            fprintf(stderr, "Failed to wake up: %s\n", strerror(errno));
+        }
+        return -1;
+    }
+
     ret = read(serial_port, msg, length);
     if (ret < 0) {
         fprintf(stderr, "Failed to read: %s\n", strerror(errno));
@@ -68,22 +107,47 @@ ssize_t SERIAL_read(void *msg, size_t length)
 
 void SERIAL_close()
 {
-    if (serial_port != -1)
-        close(serial_port);
+    if (serial_port == -1)
+        return;
+    
+    // Awaken read
+    if (write(freedom_pipe[1], "WAKE UP!", 8) < 0) {
+        fprintf(stderr, "Failed to wake up: %s\n", strerror(errno));
+    }
+
+    // Wait to notification
+    char buff[8];
+    if (read(hate_pipe[0], buff, 8) < 0) {
+        fprintf(stderr, "Failed to wake up: %s\n", strerror(errno));
+    }
+
+    // Now we can go
+    close(hate_pipe[0]);
+    close(hate_pipe[1]);
+    close(freedom_pipe[0]);
+    close(freedom_pipe[1]);
+    close(serial_port);
 }
 
 
 #include <stdint.h>
 #include <pthread.h>
+#include <signal.h>
+
 
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 int end = 0;
 
-enum {
+enum UART_Cmd {
     CMD_TEMPERATURE,
     CMD_HUMIDITY,
     CMD_LIGHT,
-    CMD_SERVO
+	CMD_PREASSURE,
+
+    CMD_SERVO,
+	CMD_LED_ON,
+	CMD_LED_OFF,
+	CMD_LED_TOGGLE
 };
 
 struct msg {
@@ -92,6 +156,19 @@ struct msg {
 };
 
 struct msg data_in, data_out;
+
+enum LED_Color {
+	LED_BOARD_GREEN,
+	LED_BOARD_RED,
+	LED_BOARD_BLUE,
+
+	LED_GREEN,
+	LED_RED,
+	LED_BLUE,
+	LED_YELLOW
+};
+
+
 
 int end_program()
 {
@@ -107,9 +184,7 @@ void *reader(void *)
     ssize_t bytes, total_bytes;
     uint8_t buff[sizeof(data_in)];
 
-    double temperature, humidity;
-
-    printf("Thread created\n");
+    double temperature, humidity, light = 0;
 
     while (!end_program())
     {        
@@ -117,28 +192,35 @@ void *reader(void *)
         while (total_bytes < sizeof(data_in) && !end_program())
         {
             bytes = SERIAL_read(&buff[total_bytes], sizeof(data_out) - total_bytes);
-            //printf("bytes: %ld\n", bytes);
-            total_bytes = bytes < 0 ? sizeof(data_in) : total_bytes + bytes;
+            if (bytes == -1 && end_program()) {
+                goto exit;
+            }
+
+            if (bytes > 0)
+                total_bytes = total_bytes + bytes;
         }
 
         memcpy(&data_in, buff, sizeof(data_in));
+
+        switch (data_in.cmd)
+        {
+        case CMD_LIGHT:
+            light = (double)(data_in.data);
+            break;
+        case CMD_HUMIDITY:
+            humidity = (double)(data_in.data) / 2.0;
+            break;
+        case CMD_TEMPERATURE:
+            temperature = (double)(data_in.data) / 8.0;
+            break;
+        }
         
-        if (data_in.cmd == CMD_HUMIDITY)
-        {
-            humidity = (double)((int16_t)data_in.data) / 2.0;
-            
-        }
-        else if (data_in.cmd == CMD_TEMPERATURE)
-        {
-            temperature = (double)((int16_t)data_in.data) / 8.0;
-            
-        }
-        printf("\rHumedad: %15f; Temperatura: %15f;", humidity, temperature);
+        printf("\rHumedad: %15f; Temperatura: %15f; Light: %15f", humidity, temperature, light);
+        fflush(stdout);
         
     }
-    pthread_mutex_unlock(&mtx);
 
-    printf("Thread exit\n");
+exit:
     return NULL;
 }
 
@@ -167,17 +249,56 @@ int main()
             data_out.cmd = CMD_HUMIDITY;
             data_out.data = atoi(msg);
             SERIAL_write(&data_out, sizeof(data_out));
-            /*
-            ssize_t bytes = SERIAL_read(&data_in, sizeof(data_in));
-            printf("bytes: %ld;  cmd: %d; data: %d\n", bytes, data_in.cmd, data_in.data);
-            if (data_in.cmd == CMD_HUMIDITY)
-            {
-                printf("Humedad: %d", data_in.data);
-            }
-            */
+        }
+        else if (strcmp(type, "LED_ON") == 0)
+        {
+            data_out.cmd = CMD_LED_ON;
+            data_out.data = -1;
+            if (strcmp(msg, "BOARD_GREEN") == 0)
+                data_out.data = LED_BOARD_GREEN;
+            else if (strcmp(msg, "BOARD_BLUE") == 0)
+                data_out.data = LED_BOARD_BLUE;
+            else if (strcmp(msg, "BOARD_RED") == 0)
+                data_out.data = LED_BOARD_RED;
+            
+            printf("data: %d\n", data_out.data);
+
+            if (data_out.data != -1)
+                SERIAL_write(&data_out, sizeof(data_out));
+        }
+        else if (strcmp(type, "LED_OFF") == 0)
+        {
+            data_out.cmd = CMD_LED_OFF;
+            data_out.data = -1;
+            if (strcmp(msg, "BOARD_GREEN") == 0)
+                data_out.data = LED_BOARD_GREEN;
+            else if (strcmp(msg, "BOARD_BLUE") == 0)
+                data_out.data = LED_BOARD_BLUE;
+            else if (strcmp(msg, "BOARD_RED") == 0)
+                data_out.data = LED_BOARD_RED;
+
+            
+
+            if (data_out.data != -1)
+                SERIAL_write(&data_out, sizeof(data_out));
+        }
+        else if (strcmp(type, "LED_TOGGLE") == 0)
+        {
+            data_out.cmd = CMD_LED_TOGGLE;
+            data_out.data = -1;
+            if (strcmp(msg, "BOARD_GREEN") == 0)
+                data_out.data = LED_BOARD_GREEN;
+            else if (strcmp(msg, "BOARD_BLUE") == 0)
+                data_out.data = LED_BOARD_BLUE;
+            else if (strcmp(msg, "BOARD_RED") == 0)
+                data_out.data = LED_BOARD_RED;
+
+            if (data_out.data != -1)
+                SERIAL_write(&data_out, sizeof(data_out));
         }
         else if (strcmp(type, "END") == 0)
         {
+            printf("Ending\n");
             pthread_mutex_lock(&mtx);
             end = 1;
             pthread_mutex_unlock(&mtx);
@@ -188,6 +309,12 @@ int main()
         }
     }
 
-    SERIAL_close();
+    // Awake blocked functions and close serial
+    SERIAL_close(); 
+
+    // Awake for reader thread to end
+    void *ret_val;
+    pthread_join(reader_thread, &ret_val);
+
     return EXIT_SUCCESS;
 }
