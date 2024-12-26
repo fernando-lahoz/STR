@@ -76,7 +76,7 @@ ssize_t SERIAL_write(const void* msg, size_t length)
 ssize_t SERIAL_read(void *msg, size_t length)
 {
     ssize_t ret;
-    ret = poll(fds, 1, -1);
+    ret = poll(fds, 2, -1);
     if (ret < 0) {
         fprintf(stderr, "Failed to read (poll): %s\n", strerror(errno));
         return ret;

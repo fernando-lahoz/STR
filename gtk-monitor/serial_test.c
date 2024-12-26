@@ -56,7 +56,7 @@ void *reader(void *)
     ssize_t bytes, total_bytes;
     uint8_t buff[sizeof(data_in)];
 
-    double temperature, humidity, light = 0;
+    double temperature = 0, humidity = 0, light = 0;
 
     while (!end_program())
     {
@@ -64,7 +64,6 @@ void *reader(void *)
         while (total_bytes < sizeof(data_in) && !end_program())
         {
             bytes = SERIAL_read(&buff[total_bytes], sizeof(data_out) - total_bytes);
-            
             if (bytes > 0)
                 total_bytes = total_bytes + bytes;
         }
@@ -87,7 +86,7 @@ void *reader(void *)
             break;
         }
         
-        printf("\rHumedad: %15f; Temperatura: %15f; Light: %15f", humidity, temperature, light);
+        //printf("\rHumedad: %15f; Temperatura: %15f; Light: %15f", humidity, temperature, light);
         fflush(stdout);
         
     }
@@ -117,10 +116,11 @@ int main()
         printf(" # ");
         scanf("%s %s", type, msg);
 
-        if (strcmp(type, "HUMIDITY") == 0)
+        if (strcmp(type, "SERVO") == 0)
         {
-            data_out.cmd = CMD_HUMIDITY;
+            data_out.cmd = CMD_SERVO;
             data_out.data = atoi(msg);
+            data_out.data = data_out.data < 400 ? 400 : data_out.data > 5000 ? 5000 : data_out.data; 
             SERIAL_write(&data_out, sizeof(data_out));
         }
         else if (strcmp(type, "LED_ON") == 0)
@@ -133,8 +133,6 @@ int main()
                 data_out.data = LED_BOARD_BLUE;
             else if (strcmp(msg, "BOARD_RED") == 0)
                 data_out.data = LED_BOARD_RED;
-            
-            printf("data: %d\n", data_out.data);
 
             if (data_out.data != -1)
                 SERIAL_write(&data_out, sizeof(data_out));
