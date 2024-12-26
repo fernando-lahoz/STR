@@ -6,6 +6,8 @@
 #ifndef HTS221_H
 #define HTS221_H
 
+#include "stm32wlxx_hal.h"
+
 enum HTS221_Temp_Avg {
     HTS221_TEMP_AVG_2 = 0,
     HTS221_TEMP_AVG_4,
@@ -37,10 +39,15 @@ enum HTS221_ODR {
 
 int HTS221_check_dev(void);
 
+void HTS221_configure(enum HTS221_Temp_Avg avg_samples_temp,
+        enum HTS221_Hum_Avg avg_samples_hum, enum HTS221_ODR output_data_rate);
+
 void HTS221_start(void);
 
 void HTS221_sample(void);
 
-void HTS221_get_data(uint16_t *temperature_x8, uint16_t *humidity_x2);
+int HTS221_is_ready(void);
+
+void HTS221_get_data(int16_t *temperature_x8, int16_t *humidity_x2);
 
 #endif
