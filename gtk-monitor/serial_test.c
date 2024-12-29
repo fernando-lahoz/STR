@@ -120,7 +120,7 @@ int main()
         {
             data_out.cmd = CMD_SERVO;
             data_out.data = atoi(msg);
-            data_out.data = data_out.data < 400 ? 400 : data_out.data > 5000 ? 5000 : data_out.data; 
+            data_out.data = data_out.data < 700 ? 700 : data_out.data > 3300 ? 3300 : data_out.data; 
             SERIAL_write(&data_out, sizeof(data_out));
         }
         else if (strcmp(type, "LED_ON") == 0)
