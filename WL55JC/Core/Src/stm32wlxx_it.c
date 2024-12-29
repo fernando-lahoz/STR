@@ -57,6 +57,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern ADC_HandleTypeDef hadc;
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
@@ -182,6 +183,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32wlxx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles ADC Interrupt.
+  */
+void ADC_IRQHandler(void)
+{
+  /* USER CODE BEGIN ADC_IRQn 0 */
+
+  /* USER CODE END ADC_IRQn 0 */
+  HAL_ADC_IRQHandler(&hadc);
+  /* USER CODE BEGIN ADC_IRQn 1 */
+
+  /* USER CODE END ADC_IRQn 1 */
+}
 
 /**
   * @brief This function handles I2C2 Event Interrupt.

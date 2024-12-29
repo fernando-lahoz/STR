@@ -631,12 +631,12 @@ void sensor_i2c_task_routine(void *argument)
 void light_adc_task_routine(void *argument)
 {
   /* USER CODE BEGIN light_adc_task_routine */
-  //light_adc_task_pre_loop();
+  light_adc_task_pre_loop();
   /* Infinite loop */
   for(;;)
   {
-    //light_adc_task_iteration();
-    osDelay(1000);
+	light_adc_task_iteration();
+    osDelay(200);
   }
   /* USER CODE END light_adc_task_routine */
 }
