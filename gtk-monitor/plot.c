@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <string.h>
 #include <ftw.h>
+#include <pthread.h>
 
 #include <glib.h>
 
@@ -29,8 +30,12 @@ typedef struct PLOT_graph {
     gboolean full:1; 
     
     uint32_t rgba;
+
+    pthread_mutex_t mtx;
 } PLOT_graph_t;
 
+#define GRAPH_LOCK(graph) pthread_mutex_lock(&graph->mtx);
+#define GRAPH_UNLOCK(graph) pthread_mutex_unlock(&graph->mtx);
 
 int PLOT_init_workdir(const char* base_dir)
 {
@@ -109,6 +114,8 @@ PLOT_graph_t* PLOT_new_graph(const char* name, size_t window_size, uint32_t rgba
     graph->size = window_size;
     graph->rgba = rgba;
 
+    pthread_mutex_init(&graph->mtx, NULL);
+
     return graph;
 }
 
@@ -117,16 +124,19 @@ void PLOT_delete_graph(PLOT_graph_t* graph) {
         free(graph->name);
         free(graph->window);
         free(graph);
+        pthread_mutex_destroy(&graph->mtx);
     }
 }
 
 void PLOT_push_data(PLOT_graph_t* graph, double x)
 {
+    GRAPH_LOCK(graph);
     graph->window[graph->last] = x;
     if (++graph->last == graph->size) {
         graph->full = 1;
         graph->last = 0;
     }
+    GRAPH_UNLOCK(graph)
 }
 
 
@@ -162,8 +172,9 @@ static const char gnuplot_script_template[] =
     "set grid lw 0.5 lc rgb '#%X'\n"
     "plot '%s' smooth freq with filledcurves below y=-10 "
         "lc rgb '#%X' fs transparent solid %f notitle, "
-        "'' smooth freq with lines lw 1.5 lc rgb '#%X' title ''\n"
-    "exit\n";
+        "'' smooth freq with lines lw 1.5 lc rgb '#%X' title ''\n";
+
+static const char gnuplot_end_of_script[] = "exit\n";
 
 static void print_gnuplot_script(const PLOT_graph_t* graph, FILE* stream,
         char* img_name, char* data_name)
@@ -171,7 +182,7 @@ static void print_gnuplot_script(const PLOT_graph_t* graph, FILE* stream,
     fprintf(stream, gnuplot_script_template, graph->name, img_name,
             graph->rgba >> 8, graph->rgba >> 8, data_name, graph->rgba >> 8,
             (graph->rgba & 0xFF) / 255.0, graph->rgba >> 8);
-} //TODO: change alpha channel
+}
 
 static struct process_data {
     PLOT_callback_t callback;
@@ -209,6 +220,7 @@ static gboolean fetch_n_remove_process(int pid, struct process_data* proc)
     return TRUE;
 }
 
+static pthread_mutex_t proc_data_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data, size_t size)
 {
@@ -222,20 +234,34 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
     img_name = make_file_name(graph, img_file_extension, sizeof(img_file_extension));
     data_name = make_file_name(graph, data_file_extension, sizeof(data_file_extension));
 
-    // TODO: error???
     data_file = fopen(data_name, "w");
+    if (!data_file) {
+        fprintf(stderr, "Failed to create data file: %s\n", strerror(errno));
+        ret = -1;
+        goto free_resources;
+    }
+    GRAPH_LOCK(graph);
     print_data(graph, data_file);
+    GRAPH_UNLOCK(graph);
     fclose(data_file);
     
-    // TODO: error???
-    pipe(fds);
+    if (pipe(fds) == -1) {
+        fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
+        ret = -1;
+        goto free_resources;
+    }
     rd_fd = fds[0];
     wr_fd = fds[1];
 
-    // TODO: error???
     script_file = fdopen(wr_fd, "w");
+    if (!script_file) {
+        fprintf(stderr, "Failed to make FILE* out of pipe fd: %s\n", strerror(errno));
+        ret = -1;
+        goto free_resources;
+    }
+    GRAPH_LOCK(graph);
     print_gnuplot_script(graph, script_file, img_name, data_name);
-    fclose(script_file);
+    GRAPH_UNLOCK(graph);
 
     proc.callback = callback;
     proc.data = data;
@@ -245,21 +271,27 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
     }
     proc.size = size;
     
-// LOCK
+/* LOCK */ pthread_mutex_lock(&proc_data_mtx);
 
     if (proc_num == PLOT_MAX_PROC_NUM) {
+        /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
         fprintf(stderr, "Too many plot processes.\n");
         ret = -1;
-        free(proc.data);
-        goto free_strings; //unlock!!!!!!!!!!!1
+        free(proc.data == data ? NULL : proc.data);
+        goto free_resources;
     }
 
     int pid = fork();
     if (pid == -1) {
-        //...
+        /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
+        fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
+        ret = -1;
+        free(proc.data == data ? NULL : proc.data);
+        goto free_resources;
     }
 
     if (pid == 0) { // Child process
+        close(wr_fd);
         if (dup2(rd_fd, STDIN_FILENO) == -1) { // rd_fd > stdin
             fprintf(stderr, "Failed to bind stdin: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -274,20 +306,22 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
 
     proc.pid = pid;
     push_process(&proc);
-// UNLOCK
 
-    // write exit into pipe HERE!!!!!!!!
+/* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
 
-free_strings:
+    // Child process won't die until this is executed
+    fprintf(script_file, "%s", gnuplot_end_of_script);
+
+free_resources:
+    fclose(script_file);
     free(img_name);
     free(data_name);
-
     return ret;
 }
 
 void PLOT_notify_child_end(int child_pid)
 {
-// LOCK
+/* LOCK */ pthread_mutex_lock(&proc_data_mtx);
     struct process_data proc;
     if (fetch_n_remove_process(child_pid, &proc))
     {
@@ -296,17 +330,20 @@ void PLOT_notify_child_end(int child_pid)
         if (proc.size > 0)
             free(proc.data);
     }
-// UNLOCK
+/* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
 }
 
 
 void PLOT_set_color_rgba(PLOT_graph_t* graph, uint32_t rgba)
 {
+    GRAPH_LOCK(graph);
     graph->rgba = rgba;
+    GRAPH_UNLOCK(graph);
 }
 
 int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size)
 {
+    GRAPH_LOCK(graph);
     if (new_size == graph->size)
         return 0;
 
@@ -350,7 +387,7 @@ int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size)
     graph->window = new_window;
     graph->size = new_size;
 
-    
+    GRAPH_UNLOCK(graph);
 
     return 0;
 }

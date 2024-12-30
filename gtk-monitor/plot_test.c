@@ -19,7 +19,7 @@ void callback(void* raw_data)
 
     char *img_path = PLOT_get_img_file_name(data->graph);
     char *cmd = g_build_path(" ", "xdg-open", img_path, NULL);
-    system(cmd);
+    int status = system(cmd);
 
     free(img_path);
     free(cmd);
