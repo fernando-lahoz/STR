@@ -3,9 +3,11 @@
 
 #include "HTS221.h"
 
+#include "leds.h"
+
 void sensor_i2c_task_pre_loop()
 {
-	HTS221_configure(HTS221_TEMP_AVG_2, HTS221_HUM_AVG_4, HTS221_ODR_7HZ);
+	HTS221_configure(HTS221_TEMP_AVG_2, HTS221_HUM_AVG_4, HTS221_ODR_1HZ);
 	HTS221_start();
 }
 

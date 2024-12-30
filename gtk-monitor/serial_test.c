@@ -86,7 +86,7 @@ void *reader(void *)
             break;
         }
         
-        //printf("\rHumedad: %15f; Temperatura: %15f; Light: %15f", humidity, temperature, light);
+        printf("\rHumedad: %15f; Temperatura: %15f; Light: %15f", humidity, temperature, light);
         fflush(stdout);
         
     }

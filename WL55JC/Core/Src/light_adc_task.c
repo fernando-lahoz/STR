@@ -14,7 +14,7 @@ void light_adc_task_iteration()
 {
 	struct UART_Msg msg;
 	HAL_ADC_Start_IT(&hadc);
-	LED_toggle(LED_BOARD_GREEN);
+
 
 	msg.cmd = CMD_LIGHT;
 	msg.data = value;
@@ -26,7 +26,6 @@ void light_adc_task_iteration()
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
 	value = HAL_ADC_GetValue(hadc);
-	//HAL_ADC_Start_IT(hadc);
 
 	osEventFlagsSet(event_flagsHandle, EVENT_FLAG_ADC_CONV_DONE);
 }

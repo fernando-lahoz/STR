@@ -15,7 +15,6 @@ static struct UART_Msg msg;
 void uart_tx_task_iteration()
 {
 	osMessageQueueGet(serial_tx_data_queueHandle, &msg, NULL, osWaitForever);
-
 	// Wait for Tx message to write
     HAL_UART_Transmit_IT(&huart2, (uint8_t*)&msg, sizeof(msg));
 
