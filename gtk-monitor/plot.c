@@ -1,5 +1,6 @@
 #define _XOPEN_SOURCE 700 // Posix 2017 in order to use mkdtemp
 
+#include <locale.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -25,9 +26,9 @@ typedef struct PLOT_graph {
     char* name;
 
     double* window; // Bounded queue
-    size_t last;
-    size_t size:(8*sizeof(size_t))-1;
+    size_t last:(8*sizeof(size_t))-1;
     gboolean full:1; 
+    size_t size;
     
     uint32_t rgba;
 
@@ -164,15 +165,17 @@ static const char gnuplot_script_template[] =
         "name '%s' butt dashlength 1.0\n"
     "set output '%s'\n"
     "unset title\n"
+    "unset key\n"
     "unset xlabel\n"
     "unset ylabel\n"
+    "set yrange [0:*]\n"
     "set autoscale xfixmin\n"
     "set autoscale xfixmax\n"
     "set border lw 1 lc rgb '#%X'\n"
     "set grid lw 0.5 lc rgb '#%X'\n"
-    "plot '%s' smooth freq with filledcurves below y=-10 "
+    "plot '%s' smooth freq with filledcurves below y=0 "
         "lc rgb '#%X' fs transparent solid %f notitle, "
-        "'' smooth freq with lines lw 1.5 lc rgb '#%X' title ''\n";
+        "'' smooth freq with lines lw 1.5 lc rgb '#%X' notitle\n";
 
 static const char gnuplot_end_of_script[] = "exit\n";
 
@@ -224,6 +227,13 @@ static pthread_mutex_t proc_data_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data, size_t size)
 {
+    // This is VERY VERY important: if data is not printed with the right locale
+    // gnuplot won't generate a correct graph, but this function must not change
+    // global locale, only thread-local locale, that will be reset at the end of
+    // the function.
+    locale_t thread_locale = newlocale(LC_ALL_MASK, "en_US.UTF-8", NULL);
+    locale_t old_locale = uselocale(thread_locale);
+
     int ret = 0;
     struct process_data proc;
 
@@ -257,11 +267,14 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
     if (!script_file) {
         fprintf(stderr, "Failed to make FILE* out of pipe fd: %s\n", strerror(errno));
         ret = -1;
+        close(rd_fd);
+        close(wr_fd);
         goto free_resources;
     }
     GRAPH_LOCK(graph);
     print_gnuplot_script(graph, script_file, img_name, data_name);
     GRAPH_UNLOCK(graph);
+    fflush(script_file);
 
     proc.callback = callback;
     proc.data = data;
@@ -274,19 +287,21 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
 /* LOCK */ pthread_mutex_lock(&proc_data_mtx);
 
     if (proc_num == PLOT_MAX_PROC_NUM) {
-        /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
+    /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
         fprintf(stderr, "Too many plot processes.\n");
         ret = -1;
         free(proc.data == data ? NULL : proc.data);
+        close(rd_fd);
         goto free_resources;
     }
 
     int pid = fork();
     if (pid == -1) {
-        /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
+    /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
         fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
         ret = -1;
         free(proc.data == data ? NULL : proc.data);
+        close(rd_fd);
         goto free_resources;
     }
 
@@ -310,12 +325,15 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
 /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
 
     // Child process won't die until this is executed
-    fprintf(script_file, "%s", gnuplot_end_of_script);
+    fprintf(script_file, "%s\n", gnuplot_end_of_script);
+    fflush(script_file);
 
 free_resources:
     fclose(script_file);
     free(img_name);
     free(data_name);
+
+    uselocale(old_locale);
     return ret;
 }
 
@@ -352,7 +370,7 @@ int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size)
         return -1;
     }
 
-    typeof(graph->window) new_window = calloc(new_size, sizeof(*graph->window));
+    double *new_window = calloc(new_size, sizeof(*graph->window));
     if (!new_window) {
         fprintf(stderr, "Failed to alloc window of size %lu: %s\n", new_size, strerror(errno));
         return -1;

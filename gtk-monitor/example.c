@@ -1,50 +1,115 @@
-#include <stdlib.h>
-#include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <gtk/gtk.h>
 
-static GtkWidget *number1;
-static GtkWidget *number2;
-static GtkWidget *result;
+#include "plot.h"
+#include "util.h"
 
-void do_calculate(GtkWidget *calculate, gpointer data) {
-    int num1 = atoi((char *)gtk_entry_get_text(GTK_ENTRY(number1)));
-    int num2 = atoi((char *)gtk_entry_get_text(GTK_ENTRY(number2)));
+const char* input_name[] = {
+    [INPUT_HUMIDITY] = "humidity",
+    [INPUT_TEMPERATURE] = "temperature",
+    [INPUT_LIGHT] = "light"
+};
 
-    char buffer[32];
-    snprintf(buffer, sizeof(buffer), "result: %d", num1 + num2);
+input_sensor_t input[INPUT_SIZE];
 
-    gtk_label_set_text(GTK_LABEL(result), buffer);
+void reload_img(void* data) 
+{
+    size_t i = (size_t)data;
+    gtk_picture_set_filename(GTK_PICTURE(input[i].picture.widget), input[i].picture.file_name);
 }
 
-// gcc 007_gtk.c -o 007_gtk `pkg-config --cflags gtk+-3.0` `pkg-config --libs gtk+-3.0`
-int main(int argc, char **argv) {
-    GtkWidget *window, *grid, *calculate, *image;
-    gtk_init(&argc, &argv);
+void init_input_sensor(input_sensor_t* sensor, const char* name)
+{
+    // what if NULL?
+    sensor->graph = PLOT_new_graph(name, DEFAULT_WINDOWS_SIZE, DEFAULT_COLOR);
+    sensor->picture.file_name = PLOT_get_img_file_name(sensor->graph);
+    sensor->picture.widget = gtk_picture_new();
+}
 
-    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+void destroy_input_sensor(input_sensor_t* sensor)
+{
+    PLOT_delete_graph(sensor->graph);
+    free(sensor->picture.file_name);
+}
 
-    grid = gtk_grid_new();
-    gtk_container_add(GTK_CONTAINER(window), grid);
+void init_input(GtkWidget *box)
+{
+    for (size_t i = 0; i < INPUT_SIZE; ++i) {
+        init_input_sensor(&input[i], input_name[i]);
+        PLOT_plot_to_file(input[i].graph, reload_img, (void*)i, 0);
+        gtk_box_append(GTK_BOX(box), input[i].picture.widget);
+    }
+}
 
-    image = gtk_image_new_from_file ("steps.3.svg");
-    gtk_grid_attach(GTK_GRID(grid), image, 0, 0, 1, 1);
+void destroy_input()
+{
+    for (int i = 0; i < INPUT_SIZE; ++i) {
+        destroy_input_sensor(&input[i]);
+    }
+}
 
-    number1 = gtk_entry_new();
-    gtk_grid_attach(GTK_GRID(grid), number1, 0, 0, 1, 1);
+static gboolean running = TRUE;
 
-    number2 = gtk_entry_new();
-    gtk_grid_attach(GTK_GRID(grid), number2, 1, 0, 1, 1);
+void on_window_destroy(GtkWidget *widget, gpointer data) {
+    g_print("Goodbye!!!.\n");
+    running = FALSE;
+}
 
-    calculate = gtk_button_new_with_label("calculate");
-    g_signal_connect(calculate, "clicked", G_CALLBACK(do_calculate), NULL);
-    gtk_grid_attach(GTK_GRID(grid), calculate, 2, 0, 1, 1);
+gboolean on_timeout(void*)
+{
+    static int n = 0, it = 0;
+    int status;
+    pid_t pid = waitpid(-1, &status, WNOHANG);
+    
+    // Does not block, only checks if a child died before this frame
+    if (pid > 0) {
+        PLOT_notify_child_end(pid);
+    }
 
-    result = gtk_label_new("result:");
-    gtk_grid_attach(GTK_GRID(grid), result, 3, 0, 1, 1);
+    return running;
+}
 
-    gtk_widget_show_all(window);
-    gtk_main();
+static void activate(GtkApplication* app, gpointer user_data)
+{
+    GtkWidget *window;
 
-    return 0;
+    window = gtk_application_window_new(app);
+    gtk_window_set_title(GTK_WINDOW(window), "STR GTK-Monitor");
+    gtk_window_set_default_size(GTK_WINDOW(window), 800, 800);
+
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_window_set_child(GTK_WINDOW(window), box);
+
+    init_input(box);
+    g_timeout_add(20, on_timeout, NULL);
+
+    g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), NULL);
+
+    launch_reader_thread("/dev/ttyACM0");
+
+    gtk_window_present(GTK_WINDOW(window));
+}
+
+int main (int argc, char **argv)
+{
+    GtkApplication *app;
+    int status;
+
+    PLOT_init_workdir("/dev/shm");
+
+    app = gtk_application_new("str.gtk-monitor", G_APPLICATION_DEFAULT_FLAGS);
+
+    g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
+    
+    status = g_application_run(G_APPLICATION(app), argc, argv);
+
+    terminate_reader_thread();
+
+    destroy_input();
+    PLOT_clean_workdir();
+
+    g_object_unref(app);
+    return status;
 }
