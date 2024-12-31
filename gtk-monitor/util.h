@@ -41,7 +41,14 @@ enum {
     INPUT_SIZE
 };
 
-extern const char* input_name[];
+typedef struct input_attr {
+    const char* name;
+    size_t window_size;
+    double min, max;
+    uint32_t rgba;
+} input_attr_t;
+
+extern input_attr_t input_attr[];
 
 typedef struct input_sensor {
     struct {

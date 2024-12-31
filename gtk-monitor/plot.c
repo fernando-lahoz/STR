@@ -29,6 +29,8 @@ typedef struct PLOT_graph {
     size_t last:(8*sizeof(size_t))-1;
     gboolean full:1; 
     size_t size;
+
+    double max, min;
     
     uint32_t rgba;
 
@@ -114,6 +116,8 @@ PLOT_graph_t* PLOT_new_graph(const char* name, size_t window_size, uint32_t rgba
     graph->last = 0;
     graph->size = window_size;
     graph->rgba = rgba;
+    graph->min = 0.0;
+    graph->max = 1.0;
 
     pthread_mutex_init(&graph->mtx, NULL);
 
@@ -168,12 +172,12 @@ static const char gnuplot_script_template[] =
     "unset key\n"
     "unset xlabel\n"
     "unset ylabel\n"
-    "set yrange [0:*]\n"
+    "set yrange [%f:%f]\n"
     "set autoscale xfixmin\n"
     "set autoscale xfixmax\n"
     "set border lw 1 lc rgb '#%X'\n"
     "set grid lw 0.5 lc rgb '#%X'\n"
-    "plot '%s' smooth freq with filledcurves below y=0 "
+    "plot '%s' smooth freq with filledcurves below y=-50 "
         "lc rgb '#%X' fs transparent solid %f notitle, "
         "'' smooth freq with lines lw 1.5 lc rgb '#%X' notitle\n";
 
@@ -182,7 +186,8 @@ static const char gnuplot_end_of_script[] = "exit\n";
 static void print_gnuplot_script(const PLOT_graph_t* graph, FILE* stream,
         char* img_name, char* data_name)
 {
-    fprintf(stream, gnuplot_script_template, graph->name, img_name,
+    fprintf(stream, gnuplot_script_template,
+            graph->name, img_name, graph->min, graph->max,
             graph->rgba >> 8, graph->rgba >> 8, data_name, graph->rgba >> 8,
             (graph->rgba & 0xFF) / 255.0, graph->rgba >> 8);
 }
@@ -356,6 +361,14 @@ void PLOT_set_color_rgba(PLOT_graph_t* graph, uint32_t rgba)
 {
     GRAPH_LOCK(graph);
     graph->rgba = rgba;
+    GRAPH_UNLOCK(graph);
+}
+
+void PLOT_set_limits(PLOT_graph_t* graph, double min, double max)
+{
+    GRAPH_LOCK(graph);
+    graph->min = min;
+    graph->max = max;
     GRAPH_UNLOCK(graph);
 }
 

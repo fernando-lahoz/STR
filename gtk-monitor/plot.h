@@ -76,6 +76,8 @@ void PLOT_notify_child_end(int child_pid);
 
 void PLOT_set_color_rgba(PLOT_graph_t* graph, uint32_t rgba);
 
+void PLOT_set_limits(PLOT_graph_t* graph, double min, double max);
+
 int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size);
 
 char* PLOT_get_img_file_name(PLOT_graph_t* graph);

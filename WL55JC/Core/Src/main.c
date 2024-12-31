@@ -636,7 +636,7 @@ void light_adc_task_routine(void *argument)
   for(;;)
   {
 	light_adc_task_iteration();
-    osDelay(500); // 2Hz -> Change to 10Hz if monitor can handle it
+    osDelay(100); // 10Hz
   }
   /* USER CODE END light_adc_task_routine */
 }

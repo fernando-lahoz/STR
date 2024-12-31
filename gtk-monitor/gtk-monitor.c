@@ -6,10 +6,13 @@
 #include "plot.h"
 #include "util.h"
 
-const char* input_name[] = {
-    [INPUT_HUMIDITY] = "humidity",
-    [INPUT_TEMPERATURE] = "temperature",
-    [INPUT_LIGHT] = "light"
+// compile with:
+//   gcc `pkg-config --cflags gtk4` gtk-monitor.c plot.c serial.c reader_thread.c -o gtk-monitor `pkg-config --libs gtk4` -O3
+
+input_attr_t input_attr[] = {
+    [INPUT_HUMIDITY] = {"humidity", 60, 0, 100, 0xAEE7EE80},
+    [INPUT_TEMPERATURE] = {"temperature", 60, -10, 50, 0xD5545280},
+    [INPUT_LIGHT] = {"light", 100, 0, 100, 0xFFEE5880}
 };
 
 input_sensor_t input[INPUT_SIZE];
@@ -37,7 +40,10 @@ void destroy_input_sensor(input_sensor_t* sensor)
 void init_input(GtkWidget *box)
 {
     for (size_t i = 0; i < INPUT_SIZE; ++i) {
-        init_input_sensor(&input[i], input_name[i]);
+        init_input_sensor(&input[i], input_attr[i].name);
+        PLOT_resize_window(input[i].graph, input_attr[i].window_size);
+        PLOT_set_color_rgba(input[i].graph, input_attr[i].rgba);
+        PLOT_set_limits(input[i].graph, input_attr[i].min, input_attr[i].max);
         PLOT_plot_to_file(input[i].graph, reload_img, (void*)i, 0);
         gtk_box_append(GTK_BOX(box), input[i].picture.widget);
     }
@@ -53,7 +59,7 @@ void destroy_input()
 static gboolean running = TRUE;
 
 void on_window_destroy(GtkWidget *widget, gpointer data) {
-    g_print("Goodbye!!!.\n");
+    g_print("Goodbye!!!\n");
     running = FALSE;
 }
 
