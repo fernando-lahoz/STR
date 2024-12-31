@@ -154,12 +154,23 @@ static char* make_file_name(const PLOT_graph_t* graph, const char* extension, si
 
 static void print_data(const PLOT_graph_t* graph, FILE *stream)
 {
-    size_t i = graph->full ? graph->last : 0;
-
-    for (size_t k = 0; k < graph->size; ++k) {
-        fprintf(stream, "%lu %f\n", k, graph->window[i]);
-        if (++i == graph->size)
-            i = 0;
+    size_t i, k;
+    if (graph->full) {
+        i = graph->last;
+        for (k = 0; k < graph->size; ++k) {
+            fprintf(stream, "%f %f\n", (double)k, graph->window[i]);
+            if (++i == graph->size)
+                i = 0;
+        }
+        fprintf(stream, "%f %f\n", k - 0.999, graph->min);
+    } else {
+        for (k = 0; k < graph->last; ++k) {
+            fprintf(stream, "%f %f\n", (double) k, graph->window[i]);
+        }
+        fprintf(stream, "%f %f\n", k - 0.999, graph->min);
+        for (; k < graph->size; ++k) {
+            fprintf(stream, "%f %f\n", (double) k, graph->min);
+        }
     }
 }
 
@@ -173,13 +184,12 @@ static const char gnuplot_script_template[] =
     "unset xlabel\n"
     "unset ylabel\n"
     "set yrange [%f:%f]\n"
-    "set autoscale xfixmin\n"
-    "set autoscale xfixmax\n"
+    "set xrange [%u:%lu]\n"
     "set border lw 1 lc rgb '#%X'\n"
     "set grid lw 0.5 lc rgb '#%X'\n"
     "plot '%s' smooth freq with filledcurves below y=-50 "
         "lc rgb '#%X' fs transparent solid %f notitle, "
-        "'' smooth freq with lines lw 1.5 lc rgb '#%X' notitle\n";
+        "'' smooth freq with lines lw 1.5 lc rgb '#%X' title ' '\n";
 
 static const char gnuplot_end_of_script[] = "exit\n";
 
@@ -187,7 +197,7 @@ static void print_gnuplot_script(const PLOT_graph_t* graph, FILE* stream,
         char* img_name, char* data_name)
 {
     fprintf(stream, gnuplot_script_template,
-            graph->name, img_name, graph->min, graph->max,
+            graph->name, img_name, graph->min, graph->max, 0, graph->size,
             graph->rgba >> 8, graph->rgba >> 8, data_name, graph->rgba >> 8,
             (graph->rgba & 0xFF) / 255.0, graph->rgba >> 8);
 }
@@ -293,7 +303,7 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
 
     if (proc_num == PLOT_MAX_PROC_NUM) {
     /* UNLOCK */ pthread_mutex_unlock(&proc_data_mtx);
-        fprintf(stderr, "Too many plot processes.\n");
+        //fprintf(stderr, "Too many plot processes.\n");
         ret = -1;
         free(proc.data == data ? NULL : proc.data);
         close(rd_fd);
