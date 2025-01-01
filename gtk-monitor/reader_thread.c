@@ -1,9 +1,12 @@
+#define _XOPEN_SOURCE 700 // Posix 2017 in order to use mkdtemp
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 #include "serial.h"
 #include "util.h"
@@ -29,6 +32,11 @@ static void *reader(void *)
 
     double humidity, temperature, light;
 
+    gboolean data_is_garbage = 1;
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     while (!end_program())
     {
         total_bytes = 0;
@@ -38,8 +46,15 @@ static void *reader(void *)
             if (bytes > 0)
                 total_bytes = total_bytes + bytes;
         }
-        if (end_program()) {
+
+        if (end_program())
             goto exit;
+
+        // Wait half a second to remove garbage from serial port
+        if (data_is_garbage) {
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            data_is_garbage = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9 <  0.5;
+            continue;
         }
 
         memcpy(&data_in, buff, sizeof(data_in));
@@ -72,21 +87,18 @@ exit:
 
 static pthread_t reader_thread;
 
-int launch_reader_thread(const char* dev)
+int launch_reader_thread()
 {
     end = 0;
 
-    if (SERIAL_open(dev))
-        return EXIT_FAILURE;
-
     if (pthread_create(&reader_thread, NULL, reader, (void*)&data_in) != 0) {
-        printf("Error on pthread_create()\n");
-        SERIAL_close();
-        return EXIT_FAILURE;
+        fprintf(stderr, "Failed to create reader thread: %s\n", strerror(errno));
+        return -1;
     }
+    return 0;
 }
 
-int terminate_reader_thread()
+void* terminate_reader_thread()
 {
     pthread_mutex_lock(&mtx);
     end = 1;
@@ -97,5 +109,5 @@ int terminate_reader_thread()
     void *ret_val;
     pthread_join(reader_thread, &ret_val);
 
-    SERIAL_close();
+    return ret_val;
 }

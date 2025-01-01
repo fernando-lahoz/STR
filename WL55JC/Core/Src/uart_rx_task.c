@@ -20,15 +20,16 @@ void uart_rx_task_pre_loop()
 
 void uart_rx_task_iteration()
 {
-
 	// Await interruption flag
 	osEventFlagsWait(event_flagsHandle, EVENT_FLAG_UART_RX_DONE, osFlagsWaitAll, osWaitForever);
+
+	LED_toggle(LED_BOARD_BLUE);
 
 	// Make action
 	switch (msg.cmd)
 	{
 	case CMD_SERVO:
-		htim16.Instance->CCR1 = msg.data;
+		htim16.Instance->CCR1 = msg.data < 700 ? 700 : msg.data > 3300 ? 3300 : msg.data;
 		LED_toggle(LED_BOARD_GREEN);
 		break;
 	case CMD_LED_ON:
@@ -45,10 +46,12 @@ void uart_rx_task_iteration()
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	// Always try to receive something
-	HAL_UART_Receive_IT(&huart2, (uint8_t *)&msg, sizeof(msg));
-
 	osEventFlagsSet(event_flagsHandle, EVENT_FLAG_UART_RX_DONE);
+	// Always try to receive something
+	HAL_StatusTypeDef status = HAL_UART_Receive_IT(&huart2, (uint8_t *)&msg, sizeof(msg));
+	if (status != HAL_OK) {
+		LED_toggle(LED_BOARD_RED);
+	}
 }
 
 

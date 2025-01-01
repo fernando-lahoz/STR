@@ -100,21 +100,9 @@ const osThreadAttr_t light_adc_task_attributes = {
   .cb_size = sizeof(light_adc_taskControlBlock),
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for servo_task */
-osThreadId_t servo_taskHandle;
-uint32_t servo_taskBuffer[ 128 ];
-osStaticThreadDef_t servo_taskControlBlock;
-const osThreadAttr_t servo_task_attributes = {
-  .name = "servo_task",
-  .stack_mem = &servo_taskBuffer[0],
-  .stack_size = sizeof(servo_taskBuffer),
-  .cb_mem = &servo_taskControlBlock,
-  .cb_size = sizeof(servo_taskControlBlock),
-  .priority = (osPriority_t) osPriorityNormal,
-};
 /* Definitions for serial_tx_data_queue */
 osMessageQueueId_t serial_tx_data_queueHandle;
-uint8_t serial_tx_data_queueBuffer[ 16 * sizeof( uint64_t ) ];
+uint8_t serial_tx_data_queueBuffer[ 64 * sizeof( uint64_t ) ];
 osStaticMessageQDef_t serial_tx_data_queueControlBlock;
 const osMessageQueueAttr_t serial_tx_data_queue_attributes = {
   .name = "serial_tx_data_queue",
@@ -146,7 +134,6 @@ void uart_tx_task_routine(void *argument);
 void uart_rx_task_routine(void *argument);
 void sensor_i2c_task_routine(void *argument);
 void light_adc_task_routine(void *argument);
-void servo_task_routine(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -211,7 +198,7 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of serial_tx_data_queue */
-  serial_tx_data_queueHandle = osMessageQueueNew (16, sizeof(uint64_t), &serial_tx_data_queue_attributes);
+  serial_tx_data_queueHandle = osMessageQueueNew (64, sizeof(uint64_t), &serial_tx_data_queue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -229,9 +216,6 @@ int main(void)
 
   /* creation of light_adc_task */
   light_adc_taskHandle = osThreadNew(light_adc_task_routine, NULL, &light_adc_task_attributes);
-
-  /* creation of servo_task */
-  servo_taskHandle = osThreadNew(servo_task_routine, NULL, &servo_task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -495,11 +479,11 @@ static void MX_USART2_UART_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_7_8) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
+  if (HAL_UARTEx_EnableFifoMode(&huart2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -558,7 +542,6 @@ void uart_tx_task_iteration(void);
 void uart_rx_task_iteration(void);
 void sensor_i2c_task_iteration(void);
 void light_adc_task_iteration(void);
-void servo_task_iteration(void);
 
 /* USER CODE END 4 */
 
@@ -639,25 +622,6 @@ void light_adc_task_routine(void *argument)
     osDelay(100); // 10Hz
   }
   /* USER CODE END light_adc_task_routine */
-}
-
-/* USER CODE BEGIN Header_servo_task_routine */
-/**
-* @brief Function implementing the servo_task thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_servo_task_routine */
-void servo_task_routine(void *argument)
-{
-  /* USER CODE BEGIN servo_task_routine */
-  /* Infinite loop */
-
-  for(;;)
-  {
-    osDelay(100000);
-  }
-  /* USER CODE END servo_task_routine */
 }
 
 /**

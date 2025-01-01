@@ -165,7 +165,7 @@ static void print_data(const PLOT_graph_t* graph, FILE *stream)
         fprintf(stream, "%f %f\n", k - 0.999, graph->min);
     } else {
         for (k = 0; k < graph->last; ++k) {
-            fprintf(stream, "%f %f\n", (double) k, graph->window[i]);
+            fprintf(stream, "%f %f\n", (double) k, graph->window[k]);
         }
         fprintf(stream, "%f %f\n", k - 0.999, graph->min);
         for (; k < graph->size; ++k) {
@@ -268,6 +268,7 @@ int PLOT_plot_to_file(PLOT_graph_t* graph, PLOT_callback_t callback, void* data,
     GRAPH_LOCK(graph);
     print_data(graph, data_file);
     GRAPH_UNLOCK(graph);
+    fflush(data_file);
     fclose(data_file);
     
     if (pipe(fds) == -1) {

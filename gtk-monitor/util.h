@@ -23,17 +23,19 @@ struct msg {
 };
 
 enum LED_Color {
-	LED_BOARD_GREEN,
-	LED_BOARD_RED,
-	LED_BOARD_BLUE,
+    LED_BOARD_GREEN,
+    LED_BOARD_RED,
+    LED_BOARD_BLUE,
 
-	LED_GREEN,
-	LED_RED,
-	LED_BLUE,
-	LED_YELLOW
+    LED_GREEN,
+    LED_RED,
+    LED_BLUE,
+    LED_YELLOW,
+
+    LED_NUMBER
 };
 
-enum {
+enum Input {
     INPUT_HUMIDITY,
     INPUT_TEMPERATURE,
     INPUT_LIGHT,
@@ -64,9 +66,22 @@ extern input_sensor_t input[INPUT_SIZE];
 #define DEFAULT_WINDOWS_SIZE (20)
 #define DEFAULT_COLOR (0xFFFFFF80)
 
+enum Output {
+    OUTPUT_LED,
+    /* space for leds */
+    OUTPUT_SERVO = LED_NUMBER,
+
+    OUTPUT_SIZE 
+};
+
+void mbox_send(int slot, struct msg* data);
+
 void reload_img(void* data);
 
-int launch_reader_thread(const char* dev);
-int terminate_reader_thread(void);
+int launch_reader_thread(void);
+void* terminate_reader_thread(void);
+
+int launch_writer_thread(void);
+void* terminate_writer_thread(void);
 
 #endif

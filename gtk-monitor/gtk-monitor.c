@@ -3,11 +3,12 @@
 
 #include <gtk/gtk.h>
 
+#include "serial.h"
 #include "plot.h"
 #include "util.h"
 
 // compile with:
-//   gcc `pkg-config --cflags gtk4` gtk-monitor.c plot.c serial.c reader_thread.c -o gtk-monitor `pkg-config --libs gtk4` -O3
+//   gcc `pkg-config --cflags gtk4` gtk-monitor.c plot.c serial.c reader_thread.c writer_thread.c -o gtk-monitor `pkg-config --libs gtk4` -O3
 
 input_attr_t input_attr[] = {
     [INPUT_HUMIDITY] = {"humidity", 60, 0, 100, 0xAEE7EE80},
@@ -21,6 +22,13 @@ void reload_img(void* data)
 {
     size_t i = (size_t)data;
     gtk_picture_set_filename(GTK_PICTURE(input[i].picture.widget), input[i].picture.file_name);
+}
+
+void on_slider_value_changed(GtkRange *range, gpointer user_data)
+{
+    gdouble value = gtk_range_get_value(range);
+    struct msg msg = { CMD_SERVO, (uint32_t)value };
+    mbox_send(OUTPUT_SERVO, &msg);
 }
 
 void init_input_sensor(input_sensor_t* sensor, const char* name)
@@ -65,6 +73,9 @@ void on_window_destroy(GtkWidget *widget, gpointer data) {
 
 gboolean on_timeout(void*)
 {
+    if (!running)
+        return FALSE;
+
     static int n = 0, it = 0;
     int status;
     pid_t pid = waitpid(-1, &status, WNOHANG);
@@ -74,7 +85,7 @@ gboolean on_timeout(void*)
         PLOT_notify_child_end(pid);
     }
 
-    return running;
+    return TRUE;
 }
 
 static void activate(GtkApplication* app, gpointer user_data)
@@ -93,7 +104,19 @@ static void activate(GtkApplication* app, gpointer user_data)
 
     g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), NULL);
 
-    launch_reader_thread("/dev/ttyACM0");
+    launch_reader_thread();
+    launch_writer_thread();
+
+
+    GtkWidget *slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 700.0, 3300.0, 1);
+    gtk_scale_set_draw_value(GTK_SCALE(slider), TRUE);
+    gtk_range_set_value(GTK_RANGE(slider), (3300.0 + 700.0) / 2.0);
+    g_signal_connect(slider, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
+    
+    struct msg msg = { CMD_SERVO, 2000 };
+    mbox_send(OUTPUT_SERVO, &msg);
+
+    gtk_box_append(GTK_BOX(box), slider);
 
     gtk_window_present(GTK_WINDOW(window));
 }
@@ -103,7 +126,11 @@ int main (int argc, char **argv)
     GtkApplication *app;
     int status;
 
-    PLOT_init_workdir("/dev/shm");
+    if (SERIAL_open("/dev/ttyACM0"))
+        return EXIT_FAILURE;
+
+    if (PLOT_init_workdir("/dev/shm"))
+        return EXIT_FAILURE;
 
     app = gtk_application_new("str.gtk-monitor", G_APPLICATION_DEFAULT_FLAGS);
 
@@ -112,8 +139,13 @@ int main (int argc, char **argv)
     status = g_application_run(G_APPLICATION(app), argc, argv);
 
     terminate_reader_thread();
+    terminate_writer_thread();
+    SERIAL_close();
 
     destroy_input();
+
+    // Await for all children to end before removing directory
+    while (waitpid(-1, &status, 0) > 0);
     PLOT_clean_workdir();
 
     g_object_unref(app);
