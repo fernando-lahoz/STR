@@ -137,11 +137,11 @@ void on_switch_state_set(GtkSwitch *widget, gboolean state, void* data)
     if (state) {
         led_active_color[led] = led_colors[led].color_on;
         struct msg msg = { CMD_LED_ON, led };
-        mbox_send(OUTPUT_LED, &msg);
+        mbox_send(OUTPUT_LED + led, &msg);
     } else {
         led_active_color[led] = led_colors[led].color_off;
         struct msg msg = { CMD_LED_OFF, led };
-        mbox_send(OUTPUT_LED, &msg);
+        mbox_send(OUTPUT_LED + led, &msg);
     }
     update_css();
 }
@@ -222,6 +222,11 @@ void init_output(GtkWidget *notebook)
 
     struct msg msg = { CMD_SERVO, 2000 };
     mbox_send(OUTPUT_SERVO, &msg);
+    for (int i = 0; i < LED_NUMBER; i++) {
+        msg.cmd = CMD_LED_OFF;
+        msg.data = i;
+        mbox_send(OUTPUT_LED + i, &msg);
+    } 
 }
 
 void init_input_sensor(input_sensor_t* sensor, const input_attr_t* attr, size_t num, GtkWidget *notebook)

@@ -103,6 +103,9 @@ static void *writer(void *)
             goto exit;
 
         SERIAL_write(&data_out, sizeof(data_out));
+        // SERIAL_write is probably a buffered operation
+        // In order to not saturate uart's fifo let it sleep some time
+        g_usleep(20000); 
     }
 
 exit:
