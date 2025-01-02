@@ -176,7 +176,7 @@ static void print_data(const PLOT_graph_t* graph, FILE *stream)
 
 
 static const char gnuplot_script_template[] =
-    "set terminal svg size 600,400 dynamic enhanced font 'Droid Sans Mono,10' "
+    "set terminal svg size 1200,800 dynamic enhanced font 'Droid Sans Mono,10' "
         "name '%s' butt dashlength 1.0\n"
     "set output '%s'\n"
     "unset title\n"
@@ -437,4 +437,13 @@ int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size)
 char* PLOT_get_img_file_name(PLOT_graph_t* graph)
 {
     return make_file_name(graph, img_file_extension, sizeof(img_file_extension));
+}
+
+double PLOT_get_last_value(PLOT_graph_t* graph)
+{
+    double res;
+    GRAPH_LOCK(graph);
+    res = graph->window[(graph->last - 1) % graph->size];
+    GRAPH_UNLOCK(graph);
+    return res;
 }

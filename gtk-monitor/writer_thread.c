@@ -106,7 +106,6 @@ static void *writer(void *)
     }
 
 exit:
-    printf("End of thread\n");
     return NULL;
 }
 

@@ -25,6 +25,8 @@ static int end_program()
     return ret;
 }
 
+static uint8_t sync_bytes[8] = {0xEE, 0x11, 0xCC, 0x33, 0xAA, 0x55, 0x88, 0x77};
+
 static void *reader(void *)
 {
     ssize_t bytes, total_bytes;
@@ -40,24 +42,58 @@ static void *reader(void *)
     while (!end_program())
     {
         total_bytes = 0;
-        while (total_bytes < sizeof(data_in) && !end_program())
+        while (total_bytes < 8)
+        {
+            bytes = SERIAL_read(&buff[total_bytes], 8 - total_bytes);
+        
+            if (end_program())
+                goto exit;
+
+            if (bytes <= 0) 
+                continue;
+
+        restart_check:
+            for (ssize_t i = 0; i < bytes; ++i) {
+                //printf("total_bytes: %lu,  (0x%X) vs (0x%X)\n", total_bytes, buff[total_bytes], sync_bytes[total_bytes]);
+                //system("read -p 'Press ENTER to continue...' var");
+                if (buff[total_bytes] != sync_bytes[total_bytes]) {
+                    
+                    for (size_t j = 0; j < bytes - i - 1; j++) {
+                        buff[j] = buff[total_bytes + j + 1];
+                    }
+                    bytes = bytes - i - 1;
+                    total_bytes = 0;
+                    goto restart_check;
+                }
+                total_bytes++;
+            }
+        }
+        //printf("Fuera!!\n!");
+        //system("read -p 'Press ENTER to continue...' var");
+
+        total_bytes = 0;
+
+        // MSG is correct -> process it
+        while (total_bytes < sizeof(data_in))
         {
             bytes = SERIAL_read(&buff[total_bytes], sizeof(data_in) - total_bytes);
-            if (bytes > 0)
+        
+            if (end_program())
+                goto exit;
+
+            if (bytes > 0) 
                 total_bytes = total_bytes + bytes;
-        }
+        } 
 
-        if (end_program())
-            goto exit;
-
-        // Wait half a second to remove garbage from serial port
+        // Wait fraction of a second to remove garbage from serial port
         if (data_is_garbage) {
             clock_gettime(CLOCK_MONOTONIC, &end);
-            data_is_garbage = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9 <  0.5;
+            data_is_garbage = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9 <  0.2;
             continue;
         }
 
         memcpy(&data_in, buff, sizeof(data_in));
+        //printf("cmd: %d, data: %d\n", data_in.cmd, data_in.data);
 
         switch (data_in.cmd)
         {
@@ -81,7 +117,6 @@ static void *reader(void *)
     }
     
 exit:
-    printf("End of thread\n");
     return NULL;
 }
 

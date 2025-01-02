@@ -82,4 +82,6 @@ int PLOT_resize_window(PLOT_graph_t* graph, size_t new_size);
 
 char* PLOT_get_img_file_name(PLOT_graph_t* graph);
 
+double PLOT_get_last_value(PLOT_graph_t* graph);
+
 #endif

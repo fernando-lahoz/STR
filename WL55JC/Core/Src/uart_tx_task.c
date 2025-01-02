@@ -10,11 +10,14 @@
 
 #include "leds.h"
 
-static struct UART_Msg msg;
+static struct UART_Msg_TX {
+	uint8_t sync_bytes[8];
+	struct UART_Msg msg;
+} msg = { .sync_bytes = {0xEE, 0x11, 0xCC, 0x33, 0xAA, 0x55, 0x88, 0x77} };
 
 void uart_tx_task_iteration()
 {
-	osMessageQueueGet(serial_tx_data_queueHandle, &msg, NULL, osWaitForever);
+	osMessageQueueGet(serial_tx_data_queueHandle, &msg.msg, NULL, osWaitForever);
 	// Wait for Tx message to write
     HAL_UART_Transmit_IT(&huart2, (uint8_t*)&msg, sizeof(msg));
 

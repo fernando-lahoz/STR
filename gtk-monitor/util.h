@@ -45,11 +45,14 @@ enum Input {
 
 typedef struct input_attr {
     const char* name;
+    const char* title;
+    const char* units;
     size_t window_size;
     double min, max;
     uint32_t rgba;
 } input_attr_t;
 
+// Constants and default values
 extern input_attr_t input_attr[];
 
 typedef struct input_sensor {
@@ -58,9 +61,19 @@ typedef struct input_sensor {
         char *file_name;
     } picture;
     PLOT_graph_t* graph;
-    
+    struct {
+        GtkWidget* tab_widget;
+        GtkWidget* page_widget;
+        double value;
+    } info;
+    struct {
+        GtkWidget* widget;
+        GdkRGBA rgba;
+    } color;
+    uint32_t rgba;
 } input_sensor_t;
 
+// Dynamic values
 extern input_sensor_t input[INPUT_SIZE];
 
 #define DEFAULT_WINDOWS_SIZE (20)
@@ -83,5 +96,24 @@ void* terminate_reader_thread(void);
 
 int launch_writer_thread(void);
 void* terminate_writer_thread(void);
+
+static inline GdkRGBA u32_to_GdkRGBA(uint32_t rgba)
+{
+    GdkRGBA res = {
+        .alpha = (float)(rgba & 0xFF)/255.0f,
+        .blue = (float)((rgba >> 8) & 0xFF)/255.0f,
+        .green = (float)((rgba >> 16) & 0xFF)/255.0f,
+        .red = (float)((rgba >> 24) & 0xFF)/255.0f,
+    };
+    return res;
+}
+
+static inline uint32_t u32_from_GdkRGBA(const GdkRGBA* rgba)
+{
+    return ((uint32_t)((uint8_t)(rgba->red * 255)) << 24)
+         | ((uint32_t)((uint8_t)(rgba->green * 255)) << 16)
+         | ((uint32_t)((uint8_t)(rgba->blue * 255)) << 8)
+         | ((uint32_t)(uint8_t)(rgba->alpha * 255));
+}
 
 #endif
