@@ -18,11 +18,24 @@ input_attr_t input_attr[] = {
 
 input_sensor_t input[INPUT_SIZE];
 
+struct LED_Colors led_colors[LED_NUMBER] = {
+    [LED_BOARD_GREEN] = { .color_on = 0x22CB1FFF, .color_off = 0x1A4319FF },
+    [LED_BOARD_RED]   = { .color_on = 0xFF1C1CFF, .color_off = 0x562020FF },
+    [LED_BOARD_BLUE]  = { .color_on = 0x0394F1FF, .color_off = 0x09323FFF },
+
+    [LED_GREEN]       = { .color_on = 0x22CB1FFF, .color_off = 0x1A4319FF },
+    [LED_RED]         = { .color_on = 0xFF1C1CFF, .color_off = 0x562020FF },
+    [LED_BLUE]        = { .color_on = 0x0394F1FF, .color_off = 0x09323FFF },
+    [LED_YELLOW]      = { .color_on = 0xE3F932FF, .color_off = 0x626926FF },
+};
+
+uint32_t led_active_color[LED_NUMBER];
+
 GtkWidget *window;
 
 void update_css()
 {
-    char css_str[256 * (INPUT_SIZE + 1)];
+    char css_str[2048];
     size_t off = 0;
 
     #define MY_CSS(...) off += sprintf(css_str + off, __VA_ARGS__)
@@ -43,10 +56,23 @@ void update_css()
         MY_CSS("}\n\n");
     }
 
+    MY_CSS(".tab_info_output {\n");
+    MY_CSS("    font-size: 2em;\n");
+    MY_CSS("    font-weight: bold;\n");
+    MY_CSS("}\n\n");
+
     MY_CSS(".page_title {\n");
     MY_CSS("    font-size: 1.5em;\n");
     MY_CSS("    font-weight: bold;\n");
     MY_CSS("    padding-top: 50px;");
+    MY_CSS("    padding-bottom: 20px;");
+    MY_CSS("}\n\n");
+
+    MY_CSS(".page_sub_title {\n");
+    MY_CSS("    font-size: 1em;\n");
+    MY_CSS("    font-weight: bold;\n");
+    MY_CSS("    padding-top: 20px;");
+    MY_CSS("    padding-bottom: 10px;");
     MY_CSS("}\n\n");
 
     MY_CSS(".page_info {\n");
@@ -61,6 +87,16 @@ void update_css()
     MY_CSS("    padding-left: 50px;");
     MY_CSS("    padding-bottom: 50px;");
     MY_CSS("}\n\n");
+
+    MY_CSS(".slider {\n");
+    MY_CSS("    min-width: 250px;\n");
+    MY_CSS("}\n\n");
+
+    for (int i = 0; i < LED_NUMBER; i++) {
+        MY_CSS("#led_switch_%d {\n", i);
+        MY_CSS("  background-color: #%06X;\n", led_active_color[i] >> 8);
+        MY_CSS("}\n\n");
+    }
 
     #undef MY_CSS
 
@@ -95,6 +131,98 @@ void on_slider_value_changed(GtkRange* range, void* data)
     mbox_send(OUTPUT_SERVO, &msg);
 }
 
+void on_switch_state_set(GtkSwitch *widget, gboolean state, void* data)
+{
+    size_t led = (size_t)data;
+    if (state) {
+        led_active_color[led] = led_colors[led].color_on;
+        struct msg msg = { CMD_LED_ON, led };
+        mbox_send(OUTPUT_LED, &msg);
+    } else {
+        led_active_color[led] = led_colors[led].color_off;
+        struct msg msg = { CMD_LED_OFF, led };
+        mbox_send(OUTPUT_LED, &msg);
+    }
+    update_css();
+}
+
+
+void init_output(GtkWidget *notebook)
+{
+    char buffer[256];
+
+    // Tab
+    GtkWidget *tab = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_size_request(tab, 160, 70);
+
+    GtkWidget *tab_title = gtk_label_new("Output");
+    gtk_widget_add_css_class(tab_title, "tab_title");
+    gtk_box_append(GTK_BOX(tab), tab_title);
+
+    GtkWidget *tab_info = gtk_label_new("...");
+    gtk_widget_add_css_class(tab_info, "tab_info_output");
+    gtk_box_append(GTK_BOX(tab), tab_info);
+
+    // Page
+    GtkWidget *page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+
+    GtkWidget *page_title = gtk_label_new("Output");
+    gtk_widget_add_css_class(page_title, "page_title");
+    gtk_box_append(GTK_BOX(page), page_title);
+
+    GtkWidget *servo_grid = gtk_grid_new();
+    gtk_widget_set_halign(servo_grid, GTK_ALIGN_CENTER); // Centrar horizontalmente
+    gtk_widget_set_valign(servo_grid, GTK_ALIGN_CENTER); // Centrar verticalmente
+    gtk_grid_set_row_spacing(GTK_GRID(servo_grid), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(servo_grid), 20);
+    gtk_box_append(GTK_BOX(page), servo_grid);
+
+    GtkWidget *slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 700.0, 3300.0, 1);
+    gtk_scale_set_draw_value(GTK_SCALE(slider), FALSE);
+    gtk_widget_add_css_class(slider, "slider");
+    gtk_range_set_value(GTK_RANGE(slider), (3300.0 + 700.0) / 2.0);
+    g_signal_connect(slider, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
+
+    gtk_grid_attach(GTK_GRID(servo_grid), gtk_label_new("Servo motor"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(servo_grid), slider, 1, 0, 1, 1);
+
+    GtkWidget *leds_title = gtk_label_new("LEDs");
+    gtk_widget_add_css_class(leds_title, "page_sub_title");
+    gtk_box_append(GTK_BOX(page), leds_title);
+
+    GtkWidget *leds_grid = gtk_grid_new();
+    gtk_widget_set_halign(leds_grid, GTK_ALIGN_CENTER); // Centrar horizontalmente
+    gtk_widget_set_valign(leds_grid, GTK_ALIGN_CENTER); // Centrar verticalmente
+    gtk_grid_set_row_spacing(GTK_GRID(leds_grid), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(leds_grid), 20);
+    gtk_box_append(GTK_BOX(page), leds_grid);
+
+    gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Green Board"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Red Board"),   0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Blue Board"),  0, 2, 1, 1);
+    //gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Green"),       0, 3, 1, 1);
+    //gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Red"),         0, 4, 1, 1);
+    //gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Blue"),        0, 5, 1, 1);
+    //gtk_grid_attach(GTK_GRID(leds_grid), gtk_label_new("Yellow"),      0, 6, 1, 1);
+
+    for (size_t i = 0; i < LED_BOARD_NUMBER; i++) {
+        gtk_widget_set_halign(gtk_grid_get_child_at(GTK_GRID(leds_grid), 0, i), GTK_ALIGN_END);
+        
+        led_active_color[i + LED_BOARD] = led_colors[i + LED_BOARD].color_off;
+        GtkWidget *led_switch = gtk_switch_new();
+        sprintf(buffer, "led_switch_%lu", i  + LED_BOARD);
+        gtk_widget_set_name(led_switch, buffer);
+        g_signal_connect(led_switch, "state-set", G_CALLBACK(on_switch_state_set), (void*)i + LED_BOARD);
+
+        gtk_grid_attach(GTK_GRID(leds_grid), led_switch, 1, i, 1, 1);
+    }
+
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), page, tab);
+    launch_writer_thread();
+
+    struct msg msg = { CMD_SERVO, 2000 };
+    mbox_send(OUTPUT_SERVO, &msg);
+}
 
 void init_input_sensor(input_sensor_t* sensor, const input_attr_t* attr, size_t num, GtkWidget *notebook)
 {
@@ -170,6 +298,7 @@ void init_input(GtkWidget *notebook)
         init_input_sensor(&input[i], &input_attr[i], i, notebook);
         PLOT_plot_to_file(input[i].graph, reload_img, (void*)i, 0);
     }
+    launch_reader_thread();
 }
 
 void destroy_input()
@@ -223,33 +352,18 @@ static void activate(GtkApplication* app, gpointer user_data)
 {
     window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "STR GTK-Monitor");
-    gtk_window_set_default_size(GTK_WINDOW(window), 800,600);
-
+    gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
 
     GtkWidget *notebook = gtk_notebook_new();
     gtk_notebook_set_tab_pos(GTK_NOTEBOOK(notebook), GTK_POS_LEFT);
 
     init_input(notebook);
-    g_timeout_add(20, on_timeout, NULL);
-
-    g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), NULL);
-
-    launch_reader_thread();
-    launch_writer_thread();
-
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    GtkWidget *slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 700.0, 3300.0, 1);
-    gtk_scale_set_draw_value(GTK_SCALE(slider), TRUE);
-    gtk_range_set_value(GTK_RANGE(slider), (3300.0 + 700.0) / 2.0);
-    g_signal_connect(slider, "value-changed", G_CALLBACK(on_slider_value_changed), NULL);
-    gtk_box_append(GTK_BOX(box), slider);
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), box, gtk_label_new("Servo"));
-
-    struct msg msg = { CMD_SERVO, 2000 };
-    mbox_send(OUTPUT_SERVO, &msg);
+    init_output(notebook);
 
     gtk_window_set_child(GTK_WINDOW(window), notebook);
     update_css();
+    g_timeout_add(20, on_timeout, NULL);
+    g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), NULL);
     gtk_window_present(GTK_WINDOW(window));
 }
 

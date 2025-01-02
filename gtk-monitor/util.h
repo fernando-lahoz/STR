@@ -23,17 +23,33 @@ struct msg {
 };
 
 enum LED_Color {
-    LED_BOARD_GREEN,
+    LED_BOARD,
+
+    LED_BOARD_GREEN = LED_BOARD,
     LED_BOARD_RED,
     LED_BOARD_BLUE,
 
-    LED_GREEN,
+    LED_BOARD_NUMBER,
+
+    LED_EXTERNAL = LED_BOARD_NUMBER,
+
+    LED_GREEN = LED_EXTERNAL,
     LED_RED,
     LED_BLUE,
     LED_YELLOW,
 
-    LED_NUMBER
+    LED_NUMBER,
+
+    LED_EXTERNAL_NUMBER = LED_NUMBER - LED_EXTERNAL
 };
+
+struct LED_Colors {
+    uint32_t color_on;
+    uint32_t color_off;
+};
+
+extern struct LED_Colors led_colors[LED_NUMBER];
+extern uint32_t led_active_color[LED_NUMBER];
 
 enum Input {
     INPUT_HUMIDITY,
@@ -80,11 +96,11 @@ extern input_sensor_t input[INPUT_SIZE];
 #define DEFAULT_COLOR (0xFFFFFF80)
 
 enum Output {
+    OUTPUT_SERVO,
     OUTPUT_LED,
     /* space for leds */
-    OUTPUT_SERVO = LED_NUMBER,
 
-    OUTPUT_SIZE 
+    OUTPUT_SIZE = OUTPUT_LED + LED_NUMBER
 };
 
 void mbox_send(int slot, struct msg* data);
