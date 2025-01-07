@@ -618,8 +618,8 @@ void light_adc_task_routine(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	light_adc_task_iteration();
     osDelay(100); // 10Hz
+    light_adc_task_iteration();
   }
   /* USER CODE END light_adc_task_routine */
 }
