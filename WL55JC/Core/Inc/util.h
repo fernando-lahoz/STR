@@ -18,7 +18,7 @@ extern TIM_HandleTypeDef htim16;
 
 extern osMessageQueueId_t serial_tx_data_queueHandle;
 
-#define BIT(n) (1 << n)
+#define BIT(n) ((uint32_t)1 << n)
 
 enum Event_Flags {
 	EVENT_FLAG_UART_TX_DONE = BIT(0),
