@@ -68,12 +68,10 @@ static void *reader(void *)
                 total_bytes++;
             }
         }
-        //printf("Fuera!!\n!");
-        //system("read -p 'Press ENTER to continue...' var");
-
+        
         total_bytes = 0;
 
-        // MSG is correct -> process it
+        // MSG is correctly aligned -> read it
         while (total_bytes < sizeof(data_in))
         {
             bytes = SERIAL_read(&buff[total_bytes], sizeof(data_in) - total_bytes);
@@ -85,7 +83,7 @@ static void *reader(void *)
                 total_bytes = total_bytes + bytes;
         } 
 
-        // Wait fraction of a second to remove garbage from serial port
+        // Messages received before 200ms of run time are discarded to remove garbage from serial port
         if (data_is_garbage) {
             clock_gettime(CLOCK_MONOTONIC, &end);
             data_is_garbage = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9 <  0.2;
@@ -93,7 +91,6 @@ static void *reader(void *)
         }
 
         memcpy(&data_in, buff, sizeof(data_in));
-        //printf("cmd: %d, data: %d\n", data_in.cmd, data_in.data);
 
         switch (data_in.cmd)
         {
